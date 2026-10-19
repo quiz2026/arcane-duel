@@ -1,0 +1,1886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arcane Clash: Online P2P Archmage Spell Duel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Fira+Code:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      user-select: none;
+      background-color: #02040a;
+      font-family: 'Inter', sans-serif;
+    }
+    .title-font { font-family: 'Cinzel', serif; }
+    .code-font { font-family: 'Fira Code', monospace; }
+    .crimson-glow { box-shadow: 0 0 25px rgba(239, 68, 68, 0.45); }
+    .azure-glow { box-shadow: 0 0 25px rgba(56, 189, 248, 0.45); }
+    .gold-glow { box-shadow: 0 0 35px rgba(245, 158, 11, 0.35); }
+    .card-slot {
+      transition: transform 0.08s ease, border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .card-slot:hover {
+      transform: translateY(-2px);
+    }
+    .card-slot:active {
+      transform: scale(0.96);
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(245, 158, 11, 0.6);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen relative overflow-hidden flex flex-col justify-between">
+
+  <!-- ================= LOBBY / CONNECTION OVERLAY ================= -->
+  <div id="lobby-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4">
+    <div class="max-w-md w-full bg-slate-900 border border-amber-500/50 rounded-3xl p-6 text-center gold-glow">
+      <div class="text-4xl mb-2">🔮</div>
+      <h1 class="title-font text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-100 to-amber-400">
+        ARCANE CLASH
+      </h1>
+      <p class="text-xs text-amber-200/70 uppercase tracking-widest font-semibold mb-6">Serverless WebRTC Peer Duel</p>
+
+      <!-- HOST SECTION -->
+      <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mb-4 text-left">
+        <span class="text-xs font-bold text-amber-300 block mb-1">OPTION 1: HOST A NEW SANCTUM</span>
+        <p class="text-[11px] text-slate-400 mb-3">Create a room and share the 6-character code or duel link with your friend.</p>
+        <button id="btn-host-game" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-xl shadow transition">
+          👑 Create Duel Room
+        </button>
+
+        <div id="host-info-box" class="mt-3 p-3 bg-slate-900/90 rounded-xl border border-amber-500/40 hidden">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-[10px] text-slate-400 uppercase">Room Code</span>
+            <span id="room-code-display" class="code-font text-base font-extrabold text-amber-300 tracking-wider">------</span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button id="btn-copy-code" class="flex-1 py-1 text-[11px] bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-200 border border-slate-700 transition">
+              📋 Copy Code
+            </button>
+            <button id="btn-copy-link" class="flex-1 py-1 text-[11px] bg-amber-950/80 hover:bg-amber-900 rounded-lg text-amber-300 border border-amber-600/70 transition">
+              🔗 Copy Direct Link
+            </button>
+          </div>
+          <p id="host-status" class="text-[10px] text-amber-400/80 mt-2 text-center animate-pulse">Waiting for peer to join...</p>
+        </div>
+      </div>
+
+      <!-- JOIN SECTION -->
+      <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-left">
+        <span class="text-xs font-bold text-cyan-300 block mb-1">OPTION 2: JOIN AN EXISTING DUEL</span>
+        <p class="text-[11px] text-slate-400 mb-3">Enter the 6-character room code from your opponent.</p>
+        <div class="flex gap-2">
+          <input id="input-room-code" maxlength="6" type="text" placeholder="e.g. 7X9K2A" class="w-32 bg-slate-900 border border-slate-700 rounded-xl px-3 text-center code-font font-bold text-cyan-300 tracking-widest text-sm focus:outline-none focus:border-cyan-400 uppercase">
+          <button id="btn-join-game" class="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black text-xs rounded-xl shadow transition">
+            ⚡ Join Duel
+          </button>
+        </div>
+        <p id="join-status" class="text-[10px] text-slate-400 mt-2 text-center hidden"></p>
+      </div>
+
+      <!-- LOCAL FALLBACK PRACTICE -->
+      <button id="btn-local-play" class="mt-4 text-[11px] text-slate-400 hover:text-slate-200 underline transition block mx-auto">
+        Practice offline / same keyboard duel
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= MAIN ARENA VIEWPORT ================= -->
+  <div id="game-container" class="relative w-full h-full flex items-center justify-center">
+    <canvas id="duelCanvas" class="w-full h-full block"></canvas>
+
+    <!-- TOP HUD: HEALTH BARS & DUEL HEADER -->
+    <div class="absolute top-2 left-0 w-full px-3 sm:px-6 flex justify-between items-start pointer-events-none z-10">
+      
+      <!-- PLAYER 1 HEALTH (Left) -->
+      <div class="w-64 sm:w-80 bg-slate-900/95 backdrop-blur-md p-3 rounded-2xl border border-red-500/50 crimson-glow pointer-events-auto">
+        <div class="flex justify-between items-center mb-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+            <span id="p1-header-label" class="title-font font-bold text-red-300 text-xs sm:text-sm tracking-wide">P1 • IGNIS ARCHMAGE</span>
+          </div>
+          <span id="p1-hp-text" class="code-font text-xs font-bold text-red-200">350 / 350 HP</span>
+        </div>
+        <div class="w-full bg-slate-950 rounded-full h-3.5 p-0.5 border border-red-900/80 overflow-hidden">
+          <div id="p1-hp-bar" class="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-red-600 rounded-full transition-all duration-75" style="width: 100%"></div>
+        </div>
+      </div>
+
+      <!-- CENTER ARENA BANNER -->
+      <div class="flex flex-col items-center pointer-events-auto pt-1">
+        <div class="title-font text-base sm:text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-100 to-amber-400 drop-shadow">
+          ARCHMAGE SANCTUM
+        </div>
+        <div class="flex items-center gap-2 mt-0.5">
+          <span id="network-badge" class="text-[9px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">OFFLINE</span>
+          <span id="room-badge" class="text-[9px] px-2 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-700 font-mono font-bold hidden">ROOM: ------</span>
+        </div>
+        <div class="flex gap-2 mt-1.5">
+          <button id="btn-open-selection" class="text-[11px] px-3 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 rounded-lg text-amber-200 transition flex items-center gap-1.5 shadow font-semibold">
+            ✨ Choose Spells
+          </button>
+          <button id="btn-sound" class="text-[11px] px-2.5 py-1 bg-slate-900/90 hover:bg-slate-800 border border-slate-700 rounded-lg text-slate-300 transition">
+            🔊 Sound: ON
+          </button>
+          <button id="btn-matrix" class="text-[11px] px-2.5 py-1 bg-slate-900/90 hover:bg-slate-800 border border-slate-700 rounded-lg text-slate-300 transition">
+            ⚖️ Rules
+          </button>
+        </div>
+      </div>
+
+      <!-- PLAYER 2 HEALTH (Right) -->
+      <div class="w-64 sm:w-80 bg-slate-900/95 backdrop-blur-md p-3 rounded-2xl border border-cyan-500/50 azure-glow pointer-events-auto">
+        <div class="flex justify-between items-center mb-1">
+          <span id="p2-hp-text" class="code-font text-xs font-bold text-cyan-200">350 / 350 HP</span>
+          <div class="flex items-center gap-2">
+            <span id="p2-header-label" class="title-font font-bold text-cyan-300 text-xs sm:text-sm tracking-wide">P2 • GLACIES ARCHMAGE</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-950 rounded-full h-3.5 p-0.5 border border-cyan-900/80 overflow-hidden">
+          <div id="p2-hp-bar" class="h-full bg-gradient-to-r from-teal-400 via-cyan-500 to-indigo-600 rounded-full transition-all duration-75" style="width: 100%"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- NOTIFICATION ANNOUNCER -->
+    <div id="announcer" class="absolute top-20 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-200 transform opacity-0 scale-90 z-20">
+      <div id="announcer-box" class="px-5 py-2 rounded-2xl backdrop-blur-md border border-amber-400/80 bg-slate-950/95 text-amber-300 font-bold tracking-wide text-xs sm:text-sm shadow-2xl flex items-center gap-2">
+        <span id="announcer-icon">⚡</span>
+        <span id="announcer-text">SPELLS CLASHED</span>
+      </div>
+    </div>
+
+    <!-- BOTTOM HUD: CHOSEN 4 SPELLS PER PLAYER -->
+    <div class="absolute bottom-3 left-0 w-full px-3 sm:px-6 flex flex-col md:flex-row justify-between items-center md:items-end gap-3 pointer-events-none z-10">
+      
+      <!-- P1 SPELL BAR -->
+      <div class="flex flex-col bg-slate-900/95 backdrop-blur-md p-2.5 rounded-2xl border border-red-500/50 crimson-glow pointer-events-auto max-w-xl w-full">
+        <div class="flex justify-between items-center mb-1.5 px-1">
+          <span id="p1-loadout-tag" class="text-xs font-bold text-red-400 tracking-wider">PLAYER 1 LOADOUT (YOU)</span>
+          <span id="p1-keys-tag" class="code-font text-[11px] text-amber-300 font-bold">[1] [2] [3] [4]</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2" id="p1-slots-container"></div>
+      </div>
+
+      <!-- CENTER STATUS HINT -->
+      <div class="hidden xl:flex flex-col items-center bg-slate-950/90 px-3 py-1.5 rounded-xl border border-slate-800 text-center pointer-events-auto shrink-0 mb-1">
+        <span class="code-font text-[10px] text-amber-300 font-bold" id="center-shortcut-hint">[SPACEBAR]</span>
+        <span class="text-[9px] text-slate-400" id="center-status-hint">Quick Match Reset</span>
+      </div>
+
+      <!-- P2 SPELL BAR -->
+      <div class="flex flex-col bg-slate-900/95 backdrop-blur-md p-2.5 rounded-2xl border border-cyan-500/50 azure-glow pointer-events-auto max-w-xl w-full">
+        <div class="flex justify-between items-center mb-1.5 px-1">
+          <span id="p2-keys-tag" class="code-font text-[11px] text-cyan-300 font-bold">[1] [2] [3] [4]</span>
+          <span id="p2-loadout-tag" class="text-xs font-bold text-cyan-400 tracking-wider">PLAYER 2 LOADOUT</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2" id="p2-slots-container"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= INTERACTIVE SPELL SELECTION MODAL ================= -->
+  <div id="selection-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-3 sm:p-6 overflow-hidden hidden">
+    <div class="w-full max-w-6xl h-full max-h-[94vh] bg-slate-900 border border-amber-500/50 rounded-3xl p-4 sm:p-6 flex flex-col justify-between gold-glow overflow-hidden">
+      
+      <!-- HEADER -->
+      <div class="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-3 gap-2">
+        <div>
+          <h2 class="title-font text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-100 to-amber-400">
+            CHOOSE YOUR 4 SPELLS
+          </h2>
+          <p id="selection-subtitle" class="text-xs text-slate-400">Pick your 4 battle spells for the duel.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-quick-p1-random" class="text-xs px-3 py-1.5 bg-red-950 hover:bg-red-900 border border-red-700/80 rounded-xl text-red-200 font-semibold transition">
+            🎲 Random Pick
+          </button>
+          <button id="btn-start-duel" class="text-xs sm:text-sm px-6 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl shadow-lg transition">
+            ⚔️ Confirm & Begin
+          </button>
+        </div>
+      </div>
+
+      <!-- CURRENT PICKS BAR -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-3 bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+        <div>
+          <div class="flex justify-between items-center mb-1 text-xs">
+            <span class="font-bold text-red-400" id="p1-select-label">P1 LOADOUT</span>
+            <span id="p1-select-count" class="code-font text-amber-300 font-bold">4 / 4 Selected</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2" id="p1-preview-slots"></div>
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-1 text-xs">
+            <span class="font-bold text-cyan-400" id="p2-select-label">P2 LOADOUT</span>
+            <span id="p2-select-count" class="code-font text-cyan-300 font-bold">4 / 4 Selected</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2" id="p2-preview-slots"></div>
+        </div>
+      </div>
+
+      <!-- SPELL CATALOG SELECTOR -->
+      <div class="flex items-center justify-between px-1 mb-1">
+        <span class="text-xs font-bold text-slate-300">MASTER SPELL GRIMOIRE (28 HIGH-VFX SPELLS)</span>
+        <div class="flex items-center gap-3" id="selection-tab-container">
+          <div class="flex rounded-lg overflow-hidden border border-slate-700 text-xs">
+            <button id="tab-p1" class="px-4 py-1 font-bold bg-red-600 text-white transition">Editing P1</button>
+            <button id="tab-p2" class="px-4 py-1 font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition">Editing P2</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="spell-catalog-grid" class="flex-1 overflow-y-auto pr-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 my-1"></div>
+
+      <!-- FOOTER CLOSE/CONFIRM -->
+      <div class="pt-2 flex justify-between items-center border-t border-slate-800 text-xs text-slate-400">
+        <span>💡 Tip: Heavier earth & cataclysm spells possess colossal mass with 13s–16s cooldowns.</span>
+        <button id="btn-cancel-select" class="px-4 py-1.5 hover:text-white transition">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ELEMENTAL CLASH RULES MODAL ================= -->
+  <div id="matrix-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 hidden">
+    <div class="max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-3xl p-6 gold-glow max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+        <h3 class="title-font text-lg font-bold text-amber-300">Spellcraft Clashing Mechanics</h3>
+        <button id="btn-close-matrix" class="text-slate-400 hover:text-white text-lg px-2">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4 text-xs">
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-orange-400 mb-1 flex items-center gap-1.5">🔥 Fire vs 🔥 Fire</div>
+          <p class="text-slate-300">Conflagration drag! Both fireballs lose <strong class="text-amber-300">65% speed</strong> and 30% projectile damage.</p>
+        </div>
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-cyan-300 mb-1 flex items-center gap-1.5">🔥 Fire vs ❄️ Frost</div>
+          <p class="text-slate-300">Thermal shock! Fire & Frost instantly <strong class="text-cyan-200">neutralize each other into steam clouds</strong>.</p>
+        </div>
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-amber-500 mb-1 flex items-center gap-1.5">⚡ Lightning vs 🪨 Earth Boulder</div>
+          <p class="text-slate-300">Grounding! Dense Earth <strong class="text-amber-300">absorbs and grounds lightning completely</strong> without stopping.</p>
+        </div>
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-teal-300 mb-1 flex items-center gap-1.5">🌪️ Wind vs 🔥 Fire</div>
+          <p class="text-slate-300">Oxygen surge! Gale blasts fan the flames, <strong class="text-orange-300">accelerating fire velocity (+60%)</strong>.</p>
+        </div>
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-purple-400 mb-1 flex items-center gap-1.5">🌌 Void Singularity</div>
+          <p class="text-slate-300">Gravity vortex! <strong class="text-purple-300">Pulls in and devours lighter enemy spells</strong> upon collision.</p>
+        </div>
+        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+          <div class="font-bold text-amber-400 mb-1 flex items-center gap-1.5">🪨 Earth vs 🪨 Earth</div>
+          <p class="text-slate-300">Mass collision! Colossal rock boulders <strong class="text-amber-200">shatter each other into crumbling debris</strong>.</p>
+        </div>
+      </div>
+
+      <div class="text-center pt-2">
+        <button id="btn-matrix-ok" class="px-6 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-bold rounded-xl text-xs hover:brightness-110 transition">
+          Return to Arena
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= VICTORY MODAL ================= -->
+  <div id="victory-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-xl p-4 hidden">
+    <div class="max-w-md w-full bg-slate-900 border border-amber-500/60 rounded-3xl p-6 sm:p-8 text-center gold-glow">
+      <div id="victory-trophy" class="text-5xl mb-2 animate-bounce">🏆</div>
+      <div class="text-xs code-font uppercase tracking-widest text-amber-400 mb-1">DUEL RESOLVED</div>
+      <h2 id="victory-title" class="title-font text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-100 to-amber-400 mb-3">
+        PLAYER 1 PREVAILS!
+      </h2>
+      <p id="victory-desc" class="text-xs text-slate-400 mb-6">Supreme spellcraft mastered in the Archmage sanctum.</p>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="btn-rematch" class="flex-1 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black rounded-xl text-xs shadow transition">
+          ⚔️ Rematch
+        </button>
+        <button id="btn-change-spells-victory" class="flex-1 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs shadow transition">
+          ✨ Change Spells
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= GAME LOGIC & NETWORKING ENGINE ================= -->
+  <script>
+    /* =========================================================
+       AUDIO ENGINE (SYNTHESIZED WEB AUDIO API)
+       ========================================================= */
+    class AudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playTone(freq, type = 'sine', duration = 0.2, gainPeak = 0.15) {
+        if (!this.enabled) return;
+        this.init();
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gain.gain.setValueAtTime(gainPeak, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch(e) {}
+      }
+      playStaffCast(element) {
+        if (!this.enabled) return;
+        this.init();
+        const t = this.ctx.currentTime;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          if (element === 'fire') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(160, t);
+            osc.frequency.linearRampToValueAtTime(320, t + 0.12);
+            osc.frequency.exponentialRampToValueAtTime(70, t + 0.38);
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.38);
+          } else if (element === 'frost') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(750, t);
+            osc.frequency.exponentialRampToValueAtTime(260, t + 0.3);
+            gain.gain.setValueAtTime(0.18, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.3);
+          } else if (element === 'lightning') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, t);
+            osc.frequency.linearRampToValueAtTime(1300, t + 0.08);
+            gain.gain.setValueAtTime(0.16, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.25);
+          } else if (element === 'earth') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(100, t);
+            osc.frequency.exponentialRampToValueAtTime(32, t + 0.45);
+            gain.gain.setValueAtTime(0.28, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.45);
+          } else if (element === 'void') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(80, t);
+            osc.frequency.linearRampToValueAtTime(180, t + 0.2);
+            osc.frequency.exponentialRampToValueAtTime(40, t + 0.45);
+            gain.gain.setValueAtTime(0.25, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.45);
+          } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(350, t);
+            osc.frequency.linearRampToValueAtTime(550, t + 0.12);
+            osc.frequency.linearRampToValueAtTime(220, t + 0.28);
+            gain.gain.setValueAtTime(0.18, t);
+            gain.gain.linearRampToValueAtTime(0.01, t + 0.28);
+          }
+          osc.start(t);
+          osc.stop(t + 0.5);
+        } catch(e) {}
+      }
+      playNeutralize() {
+        this.playTone(540, 'sine', 0.2, 0.2);
+        setTimeout(() => this.playTone(340, 'triangle', 0.18, 0.15), 40);
+      }
+      playSlowClash() {
+        this.playTone(160, 'sawtooth', 0.24, 0.22);
+      }
+      playHit() {
+        this.playTone(110, 'square', 0.12, 0.22);
+      }
+      playVictory() {
+        [440, 554, 659, 880].forEach((freq, idx) => {
+          setTimeout(() => this.playTone(freq, 'triangle', 0.35, 0.25), idx * 110);
+        });
+      }
+    }
+    const audio = new AudioEngine();
+
+    /* =========================================================
+       MASTER CATALOG OF 28 UNIQUE HIGH-VFX FANTASY SPELLS
+       ========================================================= */
+    const MASTER_SPELLS = [
+      { id: 'fireball', name: 'Fireball', element: 'fire', icon: '🔥', speed: 7.2, damage: 42, maxHp: 65, cooldown: 7.0, color: '#f97316', trailColor: '#ef4444', radius: 20, desc: 'Blazing plasma core with turbulence ribbons.' },
+      { id: 'pyro_surge', name: 'Inferno Surge', element: 'fire', icon: '💥', speed: 8.5, damage: 50, maxHp: 70, cooldown: 8.5, color: '#ea580c', trailColor: '#f97316', radius: 22, desc: 'Superheated conflagration jet fanned by wind.' },
+      { id: 'solar_flare', name: 'Solar Flare', element: 'fire', icon: '☀️', speed: 10.5, damage: 46, maxHp: 58, cooldown: 8.0, color: '#fb923c', trailColor: '#fde047', radius: 17, desc: 'Piercing solar corona lance with bright flares.' },
+      { id: 'magma_core', name: 'Magma Core', element: 'earth', icon: '🌋', speed: 5.2, damage: 64, maxHp: 115, cooldown: 12.0, color: '#c2410c', trailColor: '#ea580c', radius: 25, desc: 'Dense molten obsidian boulder with lava fissures.' },
+      { id: 'frost_lance', name: 'Frost Lance', element: 'frost', icon: '❄️', speed: 9.8, damage: 38, maxHp: 54, cooldown: 6.5, color: '#38bdf8', trailColor: '#bae6fd', radius: 16, desc: 'Faceted crystalline ice lance with frost dust vapor.' },
+      { id: 'snow_ball', name: 'Glacial Orb', element: 'frost', icon: '⚪', speed: 6.6, damage: 44, maxHp: 68, cooldown: 7.5, color: '#e0f2fe', trailColor: '#7dd3fc', radius: 22, desc: 'Dense sphere of rotating geometric ice snowflakes.' },
+      { id: 'blizzard_spike', name: 'Blizzard Spike', element: 'frost', icon: '🧊', speed: 11.2, damage: 40, maxHp: 50, cooldown: 7.0, color: '#0284c7', trailColor: '#38bdf8', radius: 15, desc: 'Sub-zero crystal shards cutting through air.' },
+      { id: 'thunder_arc', name: 'Thunder Arc', element: 'lightning', icon: '⚡', speed: 14.5, damage: 48, maxHp: 40, cooldown: 8.0, color: '#facc15', trailColor: '#fef08a', radius: 14, desc: 'Fractal electric lightning bolt with branching arcs.' },
+      { id: 'plasma_nova', name: 'Plasma Nova', element: 'lightning', icon: '⚛️', speed: 11.0, damage: 54, maxHp: 58, cooldown: 9.5, color: '#06b6d4', trailColor: '#67e8f9', radius: 19, desc: 'Pulsing ball of ionized electrical nodes and halos.' },
+      { id: 'chain_jolt', name: 'Static Bolt', element: 'lightning', icon: '🔌', speed: 13.0, damage: 36, maxHp: 38, cooldown: 6.0, color: '#eab308', trailColor: '#fef08a', radius: 13, desc: 'Swift electric jolt with crackling discharge.' },
+      { id: 'earth_boulder', name: 'Earth Boulder', element: 'earth', icon: '🪨', speed: 4.2, damage: 82, maxHp: 160, cooldown: 14.0, color: '#d97706', trailColor: '#78350f', radius: 28, desc: 'Rotating crag boulder with orbiting fragments.' },
+      { id: 'meteor', name: 'Cataclysm Meteor', element: 'earth', icon: '☄️', speed: 4.6, damage: 90, maxHp: 175, cooldown: 16.0, color: '#b45309', trailColor: '#ea580c', radius: 30, desc: 'Colossal meteorite wrapped in roaring flames.' },
+      { id: 'crystal_ram', name: 'Crystal Monolith', element: 'earth', icon: '💎', speed: 5.5, damage: 68, maxHp: 130, cooldown: 11.5, color: '#10b981', trailColor: '#059669', radius: 23, desc: 'Dense prismatic geological prism.' },
+      { id: 'gale_blast', name: 'Gale Vortex', element: 'wind', icon: '🌪️', speed: 10.5, damage: 35, maxHp: 48, cooldown: 6.5, color: '#2dd4bf', trailColor: '#99f6e4', radius: 18, desc: 'Spiraling aerodynamic wind vortex cone.' },
+      { id: 'wind_scythe', name: 'Cyclone Cutter', element: 'wind', icon: '🪓', speed: 13.0, damage: 42, maxHp: 42, cooldown: 7.0, color: '#a7f3d0', trailColor: '#34d399', radius: 16, desc: 'High velocity vacuum sickle blades.' },
+      { id: 'void_rift', name: 'Void Singularity', element: 'void', icon: '🌌', speed: 3.6, damage: 72, maxHp: 120, cooldown: 13.5, color: '#a855f7', trailColor: '#c084fc', radius: 24, desc: 'Gravitational core with warped accretion disk.' },
+      { id: 'shadow_scythe', name: 'Shadow Scythe', element: 'void', icon: '🗡️', speed: 9.6, damage: 45, maxHp: 55, cooldown: 7.5, color: '#7e22ce', trailColor: '#a855f7', radius: 17, desc: 'Warped shadow vortex infused with entropic dark matter.' },
+      { id: 'abyssal_maw', name: 'Abyssal Maw', element: 'void', icon: '🕳️', speed: 3.8, damage: 85, maxHp: 150, cooldown: 15.0, color: '#581c87', trailColor: '#7e22ce', radius: 27, desc: 'Deep cosmic singularity devouring enemy spells.' },
+      { id: 'tidal_surge', name: 'Tidal Wave', element: 'water', icon: '🌊', speed: 7.6, damage: 44, maxHp: 72, cooldown: 8.0, color: '#0284c7', trailColor: '#38bdf8', radius: 21, desc: 'Undulating water sphere with wave highlights.' },
+      { id: 'geyser_blast', name: 'Geyser Blast', element: 'water', icon: '⛲', speed: 11.5, damage: 40, maxHp: 52, cooldown: 7.0, color: '#0ea5e9', trailColor: '#7dd3fc', radius: 17, desc: 'High-pressure aquatic torpedo with foam spray.' },
+      { id: 'venom_fang', name: 'Venom Fang', element: 'poison', icon: '🧪', speed: 10.8, damage: 42, maxHp: 48, cooldown: 6.8, color: '#22c55e', trailColor: '#86efac', radius: 15, desc: 'Bubbling toxic globe with acidic droplets.' },
+      { id: 'thorns_bramble', name: 'Thorny Bramble', element: 'nature', icon: '🌿', speed: 8.2, damage: 46, maxHp: 75, cooldown: 8.5, color: '#16a34a', trailColor: '#4ade80', radius: 19, desc: 'Spinning bramble cluster with barbed thorns.' },
+      { id: 'arcane_volley', name: 'Arcane Sigil', element: 'arcane', icon: '✨', speed: 10.2, damage: 44, maxHp: 54, cooldown: 7.0, color: '#e879f9', trailColor: '#f5d0fe', radius: 16, desc: 'Sacred geometric arcane pentagram.' },
+      { id: 'prismatic_ray', name: 'Prismatic Ray', element: 'arcane', icon: '🌈', speed: 12.0, damage: 52, maxHp: 60, cooldown: 9.0, color: '#f43f5e', trailColor: '#fbcfe8', radius: 17, desc: 'Chromatic aberration core with rainbow facets.' },
+      { id: 'holy_smite', name: 'Holy Smite', element: 'holy', icon: '✝️', speed: 12.5, damage: 56, maxHp: 62, cooldown: 9.5, color: '#fef08a', trailColor: '#fde047', radius: 17, desc: 'Brilliant radiant cross halo with lens flares.' },
+      { id: 'chrono_needle', name: 'Chrono Needle', element: 'chrono', icon: '⏳', speed: 15.5, damage: 34, maxHp: 36, cooldown: 6.0, color: '#38bdf8', trailColor: '#e0f2fe', radius: 13, desc: 'Clockwork dial gear with temporal tick echoes.' },
+      { id: 'crimson_siphon', name: 'Blood Orb', element: 'blood', icon: '🩸', speed: 7.8, damage: 48, maxHp: 68, cooldown: 8.5, color: '#be123c', trailColor: '#fb7185', radius: 20, desc: 'Viscous pulsing arterial core with blood threads.' },
+      { id: 'sonic_screech', name: 'Sonic Burst', element: 'sound', icon: '🔔', speed: 13.5, damage: 40, maxHp: 44, cooldown: 6.5, color: '#f472b6', trailColor: '#fbcfe8', radius: 16, desc: 'Harmonic pressure waves oscillating forward.' }
+    ];
+
+    function getSpellById(id) {
+      return MASTER_SPELLS.find(s => s.id === id) || MASTER_SPELLS[0];
+    }
+
+    function rollRandomFour(excludeIds = []) {
+      const available = MASTER_SPELLS.map(s => s.id).filter(id => !excludeIds.includes(id));
+      const chosen = [];
+      while (chosen.length < 4 && available.length > 0) {
+        const idx = Math.floor(Math.random() * available.length);
+        chosen.push(available.splice(idx, 1)[0]);
+      }
+      return chosen;
+    }
+
+    /* =========================================================
+       NETWORKING & WEBRTC (PEERJS) ENGINE
+       ========================================================= */
+    const PEER_PREFIX = 'arcane-duel-';
+    let peer = null;
+    let netConn = null;
+    let isMultiplayer = false;
+    let isHost = false;
+    let localPlayerId = 1; // 1 = Left Wizard (P1), 2 = Right Wizard (P2)
+    let currentRoomCode = '';
+
+    function generateRoomCode(len = 6) {
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let code = '';
+      for (let i = 0; i < len; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    function initHost() {
+      const code = generateRoomCode();
+      currentRoomCode = code;
+      const peerId = PEER_PREFIX + code;
+
+      document.getElementById('btn-host-game').disabled = true;
+      document.getElementById('btn-host-game').innerText = '⏳ Summoning Sanctum...';
+
+      peer = new Peer(peerId, { debug: 1 });
+
+      peer.on('open', (id) => {
+        isMultiplayer = true;
+        isHost = true;
+        localPlayerId = 1;
+
+        document.getElementById('host-info-box').classList.remove('hidden');
+        document.getElementById('room-code-display').innerText = code;
+        document.getElementById('btn-host-game').classList.add('hidden');
+      });
+
+      peer.on('connection', (conn) => {
+        netConn = conn;
+        setupDataConnection();
+      });
+
+      peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        if (err.type === 'unavailable-id') {
+          // Collision retry
+          peer.destroy();
+          initHost();
+        } else {
+          alert('WebRTC Connection Error: ' + err.message);
+          document.getElementById('btn-host-game').disabled = false;
+          document.getElementById('btn-host-game').innerText = '👑 Create Duel Room';
+        }
+      });
+    }
+
+    function initGuest(code) {
+      code = code.trim().toUpperCase();
+      if (code.length !== 6) {
+        alert('Please enter a valid 6-character room code.');
+        return;
+      }
+
+      currentRoomCode = code;
+      const targetPeerId = PEER_PREFIX + code;
+
+      const statusEl = document.getElementById('join-status');
+      statusEl.classList.remove('hidden');
+      statusEl.innerText = 'Connecting to Archmage ' + code + '...';
+
+      document.getElementById('btn-join-game').disabled = true;
+
+      peer = new Peer({ debug: 1 });
+
+      peer.on('open', (id) => {
+        netConn = peer.connect(targetPeerId, { reliable: true });
+        setupDataConnection();
+      });
+
+      peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        statusEl.innerText = 'Failed to connect. Check code and try again.';
+        document.getElementById('btn-join-game').disabled = false;
+      });
+    }
+
+    function setupDataConnection() {
+      netConn.on('open', () => {
+        isMultiplayer = true;
+        if (!isHost) localPlayerId = 2;
+
+        document.getElementById('lobby-modal').classList.add('hidden');
+        document.getElementById('network-badge').innerText = isHost ? 'HOST (P1)' : 'PEER (P2)';
+        document.getElementById('network-badge').className = isHost 
+          ? 'text-[9px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-700 font-mono font-bold'
+          : 'text-[9px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono font-bold';
+
+        const roomBadge = document.getElementById('room-badge');
+        roomBadge.innerText = `ROOM: ${currentRoomCode}`;
+        roomBadge.classList.remove('hidden');
+
+        updateUIRoles();
+
+        if (isHost) {
+          sendNetMessage({
+            type: 'INIT_SYNC',
+            p1Spells: p1SelectedSpellIds,
+            p2Spells: p2SelectedSpellIds
+          });
+          startDuelWithChosenSpells(false);
+          triggerAnnouncer('⚡ OPPONENT JOINED! DUEL COMMENCED', 'cyan');
+        } else {
+          triggerAnnouncer('⚡ CONNECTED TO ARCHMAGE SANCTUM!', 'amber');
+        }
+      });
+
+      netConn.on('data', (data) => {
+        handleNetMessage(data);
+      });
+
+      netConn.on('close', () => {
+        triggerAnnouncer('⚠️ OPPONENT DISCONNECTED', 'orange');
+        document.getElementById('network-badge').innerText = 'DISCONNECTED';
+      });
+    }
+
+    function sendNetMessage(msg) {
+      if (netConn && netConn.open) {
+        netConn.send(msg);
+      }
+    }
+
+    function handleNetMessage(data) {
+      switch (data.type) {
+        case 'INIT_SYNC':
+          p1SelectedSpellIds = data.p1Spells;
+          p2SelectedSpellIds = data.p2Spells;
+          startDuelWithChosenSpells(false);
+          break;
+
+        case 'CAST_SPELL':
+          // Remote peer cast spell
+          if (data.playerId === 1 && wizard1) {
+            wizard1.castSpell(data.slotIndex, false);
+          } else if (data.playerId === 2 && wizard2) {
+            wizard2.castSpell(data.slotIndex, false);
+          }
+          break;
+
+        case 'SPELL_UPDATE':
+          // Loadout changed
+          p1SelectedSpellIds = data.p1Spells;
+          p2SelectedSpellIds = data.p2Spells;
+          renderSelectionPreviewBars();
+          break;
+
+        case 'START_DUEL':
+          p1SelectedSpellIds = data.p1Spells;
+          p2SelectedSpellIds = data.p2Spells;
+          startDuelWithChosenSpells(false);
+          break;
+
+        case 'STATE_SYNC':
+          if (!isHost) {
+            applyHostStateSync(data);
+          }
+          break;
+
+        case 'RESTART_REQUEST':
+          startDuelWithChosenSpells(false);
+          break;
+      }
+    }
+
+    function updateUIRoles() {
+      const p1Label = document.getElementById('p1-header-label');
+      const p2Label = document.getElementById('p2-header-label');
+      const p1Loadout = document.getElementById('p1-loadout-tag');
+      const p2Loadout = document.getElementById('p2-loadout-tag');
+
+      if (isMultiplayer) {
+        if (localPlayerId === 1) {
+          p1Label.innerText = 'P1 • YOU (IGNIS)';
+          p2Label.innerText = 'P2 • OPPONENT (GLACIES)';
+          p1Loadout.innerText = 'YOUR SPELL LOADOUT (KEYS 1-4)';
+          p2Loadout.innerText = 'OPPONENT SPELLS';
+        } else {
+          p1Label.innerText = 'P1 • OPPONENT (IGNIS)';
+          p2Label.innerText = 'P2 • YOU (GLACIES)';
+          p1Loadout.innerText = 'OPPONENT SPELLS';
+          p2Loadout.innerText = 'YOUR SPELL LOADOUT (KEYS 1-4)';
+        }
+
+        // Hide opponent editing tab in spell selection
+        document.getElementById('selection-tab-container').classList.add('hidden');
+        document.getElementById('selection-subtitle').innerText = `Select your 4 spells (${localPlayerId === 1 ? 'Player 1' : 'Player 2'}).`;
+      }
+    }
+
+    function applyHostStateSync(state) {
+      if (wizard1 && wizard2) {
+        wizard1.hp = state.p1Hp;
+        wizard2.hp = state.p2Hp;
+
+        // Projectile syncing for visual consistency
+        state.spells.forEach(srvSp => {
+          let local = activeSpells.find(s => s.netId === srvSp.id);
+          if (local) {
+            local.x = srvSp.x * screenWidth;
+            local.y = srvSp.y * screenHeight;
+            local.speed = srvSp.speed;
+            local.hp = srvSp.hp;
+          } else {
+            // New spell spawned by host
+            const conf = getSpellById(srvSp.configId);
+            const spawned = new ActiveSpell(srvSp.owner, conf, srvSp.x * screenWidth, srvSp.y * screenHeight, srvSp.dir);
+            spawned.netId = srvSp.id;
+            activeSpells.push(spawned);
+          }
+        });
+
+        // Remove dead spells
+        const aliveNetIds = new Set(state.spells.map(s => s.id));
+        for (let i = activeSpells.length - 1; i >= 0; i--) {
+          if (activeSpells[i].netId && !aliveNetIds.has(activeSpells[i].netId)) {
+            activeSpells.splice(i, 1);
+          }
+        }
+      }
+    }
+
+    /* =========================================================
+       CANVAS & RESIZE
+       ========================================================= */
+    const canvas = document.getElementById('duelCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let screenWidth = window.innerWidth;
+    let screenHeight = window.innerHeight;
+
+    function resizeCanvas() {
+      screenWidth = canvas.width = window.innerWidth;
+      screenHeight = canvas.height = window.innerHeight;
+      if (wizard1 && wizard2) {
+        const groundY = screenHeight * 0.60;
+        wizard1.x = screenWidth * 0.12;
+        wizard1.baseY = groundY;
+        wizard2.x = screenWidth * 0.88;
+        wizard2.baseY = groundY;
+      }
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    /* =========================================================
+       TRANSMUTATION RUNIC MAGIC CIRCLES (CAST SIGILS)
+       ========================================================= */
+    class CastRunicSigil {
+      constructor(x, y, color, element, dir) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.element = element;
+        this.dir = dir;
+        this.radius = 34;
+        this.life = 24;
+        this.maxLife = 24;
+        this.rot = Math.random() * Math.PI;
+      }
+      update() {
+        this.life--;
+        this.rot += 0.08 * this.dir;
+      }
+      draw(ctx) {
+        const progress = this.life / this.maxLife;
+        const alpha = Math.sin(progress * Math.PI) * 0.9;
+        const r = this.radius * (1.2 - progress * 0.2);
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.strokeStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+        ctx.lineWidth = 1.8;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.rotate(this.rot);
+        ctx.beginPath();
+        const points = 6;
+        for (let i = 0; i < points; i++) {
+          const a = (i * Math.PI * 2) / points;
+          const px = Math.cos(a) * (r * 0.85);
+          const py = Math.sin(a) * (r * 0.85);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.restore();
+      }
+    }
+
+    /* =========================================================
+       ELEMENTAL SHOCKWAVE & IMPACT FX
+       ========================================================= */
+    class ImpactShockwave {
+      constructor(x, y, color, maxRadius = 55, element = 'generic') {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.element = element;
+        this.radius = 6;
+        this.maxRadius = maxRadius;
+        this.life = 20;
+        this.maxLife = 20;
+      }
+      update() {
+        this.life--;
+        this.radius += (this.maxRadius - this.radius) * 0.18;
+      }
+      draw(ctx) {
+        const progress = this.life / this.maxLife;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, progress);
+        ctx.strokeStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 3 * progress;
+
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (this.element === 'void') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, Math.max(2, this.radius * 0.5), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    /* =========================================================
+       PARTICLE & FLOATING DAMAGE FX
+       ========================================================= */
+    class Particle {
+      constructor(x, y, vx, vy, color, size, life, type = 'spark') {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.color = color;
+        this.size = size;
+        this.maxLife = life;
+        this.life = life;
+        this.type = type;
+        this.angle = Math.random() * Math.PI * 2;
+        this.vRot = (Math.random() - 0.5) * 0.2;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+        this.angle += this.vRot;
+
+        if (this.type === 'steam') {
+          this.size += 0.5;
+          this.vy -= 0.05;
+          this.vx *= 0.98;
+        } else if (this.type === 'debris') {
+          this.vy += 0.12;
+        } else if (this.type === 'toxic_drip') {
+          this.vy += 0.15;
+        } else {
+          this.size *= 0.95;
+        }
+      }
+      draw(ctx) {
+        const alpha = Math.max(0, this.life / this.maxLife);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = this.type === 'steam' ? 4 : 10;
+
+        if (this.type === 'debris') {
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.angle);
+          ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size * 0.8);
+        } else if (this.type === 'snowflake') {
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.angle);
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(-this.size, 0); ctx.lineTo(this.size, 0);
+          ctx.moveTo(0, -this.size); ctx.lineTo(0, this.size);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, Math.max(0.5, this.size), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    class FloatingText {
+      constructor(x, y, text, color) {
+        this.x = x;
+        this.y = y;
+        this.text = text;
+        this.color = color;
+        this.life = 40;
+        this.maxLife = 40;
+        this.vy = -1.4;
+      }
+      update() {
+        this.y += this.vy;
+        this.life--;
+      }
+      draw(ctx) {
+        ctx.save();
+        const alpha = Math.max(0, this.life / this.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.font = 'bold 16px "Fira Code", monospace';
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = '#000000';
+        ctx.shadowBlur = 6;
+        ctx.textAlign = 'center';
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.restore();
+      }
+    }
+
+    let particles = [];
+    let castSigils = [];
+    let shockwaves = [];
+    let floatingTexts = [];
+    let screenShake = 0;
+    let nextSpellId = 1;
+
+    function spawnSteam(x, y, count = 32) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.8 + Math.random() * 3.0;
+        particles.push(new Particle(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed - 0.8, '#f1f5f9', 5 + Math.random() * 8, 30 + Math.random() * 15, 'steam'));
+      }
+    }
+
+    function spawnSparks(x, y, color, count = 14, speed = 3.5, type = 'spark') {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = 0.8 + Math.random() * speed;
+        particles.push(new Particle(x, y, Math.cos(angle) * spd, Math.sin(angle) * spd, color, 2.5 + Math.random() * 3.5, 18 + Math.random() * 10, type));
+      }
+    }
+
+    function spawnRockDebris(x, y, count = 18) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = 1.5 + Math.random() * 5.5;
+        particles.push(new Particle(x, y, Math.cos(angle) * spd, Math.sin(angle) * spd - 2, Math.random() > 0.5 ? '#78350f' : '#d97706', 4 + Math.random() * 5, 26 + Math.random() * 12, 'debris'));
+      }
+    }
+
+    /* =========================================================
+       ACTIVE SPELL PROJECTILE CLASS
+       ========================================================= */
+    class ActiveSpell {
+      constructor(owner, spellConfig, startX, startY, dir) {
+        this.netId = isHost ? nextSpellId++ : null;
+        this.owner = owner;
+        this.config = spellConfig;
+        this.id = spellConfig.id;
+        this.element = spellConfig.element;
+        this.x = startX;
+        this.y = startY;
+        this.dir = dir;
+        this.speed = spellConfig.speed;
+        this.damage = spellConfig.damage;
+        this.hp = spellConfig.maxHp;
+        this.maxHp = spellConfig.maxHp;
+        this.radius = spellConfig.radius;
+        this.color = spellConfig.color;
+        this.trailColor = spellConfig.trailColor;
+        this.isDead = false;
+        this.age = 0;
+        this.seed = Math.random() * 1000;
+      }
+
+      update() {
+        this.age++;
+        this.x += this.dir * this.speed;
+
+        if (Math.random() < 0.85) {
+          if (this.element === 'fire') {
+            particles.push(new Particle(this.x - this.dir * (this.radius * 0.8), this.y + (Math.random() - 0.5) * (this.radius * 0.8), -this.dir * 1.5 + (Math.random() - 0.5), (Math.random() - 0.5) * 1.2, Math.random() > 0.5 ? '#fde047' : this.trailColor, 3 + Math.random() * 4, 18, 'spark'));
+          } else if (this.element === 'frost') {
+            particles.push(new Particle(this.x - this.dir * (this.radius * 0.8), this.y + (Math.random() - 0.5) * (this.radius * 0.7), -this.dir * 0.8, (Math.random() - 0.5) * 0.6, '#e0f2fe', 3 + Math.random() * 3, 20, 'snowflake'));
+          } else if (this.element === 'lightning') {
+            particles.push(new Particle(this.x - this.dir * (this.radius * 0.6) + (Math.random() - 0.5) * 10, this.y + (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, '#fef08a', 2 + Math.random() * 2, 10, 'spark'));
+          } else if (this.element === 'earth') {
+            particles.push(new Particle(this.x - this.dir * (this.radius * 0.7), this.y + (Math.random() - 0.5) * (this.radius * 0.8), -this.dir * 0.9, (Math.random() - 0.5) * 0.8, '#78350f', 3 + Math.random() * 4, 22, 'debris'));
+          } else {
+            particles.push(new Particle(this.x - this.dir * (this.radius * 0.7), this.y + (Math.random() - 0.5) * (this.radius * 0.7), -this.dir * 0.7, (Math.random() - 0.5) * 0.6, this.trailColor, 3 + Math.random() * 3, 16, 'spark'));
+          }
+        }
+
+        if (this.x < -180 || this.x > screenWidth + 180) {
+          this.isDead = true;
+        }
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 18;
+
+        if (this.element === 'fire') {
+          const t = this.age * 0.15;
+          const r = this.radius;
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+          for (let i = 0; i < 4; i++) {
+            const a = t * 1.5 + (i * Math.PI) / 2;
+            ctx.beginPath();
+            ctx.arc(this.x - this.dir * (Math.sin(a) * (r * 0.5) + r * 0.5), this.y + Math.cos(a) * (r * 0.6), r * 0.65, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          const grad = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, r);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.3, '#fde047');
+          grad.addColorStop(0.7, '#ea580c');
+          grad.addColorStop(1, 'rgba(220, 38, 38, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (this.element === 'frost') {
+          const r = this.radius;
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.scale(this.dir, 1);
+          ctx.fillStyle = '#38bdf8';
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(r * 2.2, 0); ctx.lineTo(-r * 0.8, -r * 0.7); ctx.lineTo(-r * 1.3, 0); ctx.lineTo(-r * 0.8, r * 0.7);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+          ctx.restore();
+        } else if (this.element === 'lightning') {
+          const r = this.radius;
+          ctx.fillStyle = 'rgba(250, 204, 21, 0.25)';
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, r * 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(this.x - this.dir * (r * 1.5), this.y);
+          let cx = this.x - this.dir * (r * 1.5);
+          let cy = this.y;
+          for (let s = 1; s <= 4; s++) {
+            cx += this.dir * (r * 0.8);
+            cy += (Math.random() - 0.5) * (r * 1.4);
+            ctx.lineTo(cx, cy);
+          }
+          ctx.stroke();
+        } else if (this.element === 'earth') {
+          const r = this.radius;
+          const rot = this.age * 0.04 * this.dir;
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(rot);
+          ctx.fillStyle = this.color;
+          ctx.strokeStyle = '#290e03';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          const verts = 7;
+          for (let i = 0; i < verts; i++) {
+            const a = (i * Math.PI * 2) / verts;
+            const jitter = 0.8 + ((Math.sin(this.seed + i * 4)) * 0.25);
+            const px = Math.cos(a) * (r * jitter);
+            const py = Math.sin(a) * (r * jitter);
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+          ctx.restore();
+        } else {
+          // Standard arcane/elemental circle
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    /* =========================================================
+       ANIMATED ARCHMAGE WIZARD CLASS
+       ========================================================= */
+    class AnimatedWizard {
+      constructor(id, x, baseY, theme, chosenSpells) {
+        this.id = id;
+        this.x = x;
+        this.baseY = baseY;
+        this.theme = theme;
+        this.facing = id === 1 ? 1 : -1;
+        this.hp = 350;
+        this.maxHp = 350;
+        this.isDead = false;
+        this.spells = chosenSpells;
+        this.cooldowns = [0, 0, 0, 0];
+        this.w = 58;
+        this.h = 108;
+        this.animTime = Math.random() * 100;
+        this.castThrustTimer = 0;
+        this.hitFlashTimer = 0;
+        this.defeatTimer = 0;
+
+        if (this.theme === 'pyro') {
+          this.colors = {
+            robePrimary: '#991b1b', robeSecondary: '#b91c1c', cloakBack: '#450a0a', trim: '#fbbf24',
+            hat: '#7f1d1d', staffWood: '#573312', staffGem: '#f59e0b', eyeGlow: '#fef08a',
+            pedestalGlow: 'rgba(239, 68, 68, 0.45)', pedestalBorder: '#ef4444'
+          };
+        } else {
+          this.colors = {
+            robePrimary: '#1e1b4b', robeSecondary: '#0369a1', cloakBack: '#0f172a', trim: '#94a3b8',
+            hat: '#172554', staffWood: '#cbd5e1', staffGem: '#38bdf8', eyeGlow: '#67e8f9',
+            pedestalGlow: 'rgba(56, 189, 248, 0.45)', pedestalBorder: '#38bdf8'
+          };
+        }
+      }
+
+      setSpells(newSpells) {
+        this.spells = newSpells;
+        this.cooldowns = [0, 0, 0, 0];
+      }
+
+      getStaffTipPos() {
+        const floatOffset = Math.sin(this.animTime * 0.05) * 4;
+        const thrust = this.castThrustTimer > 0 ? 16 : 0;
+        return {
+          x: this.x + this.facing * (30 + thrust),
+          y: (this.baseY - this.h + floatOffset) + 26
+        };
+      }
+
+      castSpell(index, broadcast = true) {
+        if (this.isDead || isGameOver) return;
+        if (index < 0 || index >= this.spells.length) return;
+        if (this.cooldowns[index] > 0) return;
+
+        const spellData = this.spells[index];
+        this.cooldowns[index] = spellData.cooldown;
+        this.castThrustTimer = 14;
+        audio.playStaffCast(spellData.element);
+
+        const tip = this.getStaffTipPos();
+        castSigils.push(new CastRunicSigil(tip.x + this.facing * 12, tip.y, spellData.color, spellData.element, this.facing));
+        spawnSparks(tip.x, tip.y, spellData.color, 14, 4);
+
+        const projectile = new ActiveSpell(this.id, spellData, tip.x, tip.y, this.facing);
+        activeSpells.push(projectile);
+
+        if (broadcast && isMultiplayer) {
+          sendNetMessage({
+            type: 'CAST_SPELL',
+            playerId: this.id,
+            slotIndex: index
+          });
+        }
+      }
+
+      takeDamage(amount) {
+        if (this.isDead || isGameOver) return;
+        this.hp = Math.max(0, this.hp - amount);
+        this.hitFlashTimer = 4;
+        audio.playHit();
+
+        floatingTexts.push(new FloatingText(this.x, this.baseY - this.h - 10, `-${amount}`, '#f87171'));
+        spawnSparks(this.x, this.baseY - this.h * 0.5, '#ef4444', 8, 3.5);
+
+        if (this.hp <= 0) {
+          this.isDead = true;
+          this.hp = 0;
+          this.defeatTimer = 1;
+          endDuel(this.id === 1 ? 2 : 1);
+        }
+      }
+
+      update() {
+        this.animTime++;
+        for (let i = 0; i < this.cooldowns.length; i++) {
+          if (this.cooldowns[i] > 0) {
+            this.cooldowns[i] = Math.max(0, this.cooldowns[i] - 1 / 60);
+          }
+        }
+        if (this.castThrustTimer > 0) this.castThrustTimer--;
+        if (this.hitFlashTimer > 0) this.hitFlashTimer--;
+        if (this.isDead) this.defeatTimer++;
+      }
+
+      draw(ctx) {
+        ctx.save();
+        this.drawPedestal(ctx);
+
+        const floatBob = this.isDead ? 0 : Math.sin(this.animTime * 0.05) * 4;
+        const currentY = this.baseY - this.h + floatBob;
+        const currentX = this.x;
+
+        if (this.isDead) {
+          const collapse = Math.min(1, this.defeatTimer / 40);
+          ctx.globalAlpha = Math.max(0, 1 - collapse * 0.85);
+          ctx.translate(currentX, this.baseY);
+          ctx.scale(1, Math.max(0.2, 1 - collapse * 0.75));
+          ctx.translate(-currentX, -this.baseY);
+        }
+
+        // Draw wizard silhouette & components
+        this.drawCloakBack(ctx, currentX, currentY);
+        this.drawBodyRobes(ctx, currentX, currentY);
+        this.drawBeardAndHead(ctx, currentX, currentY);
+        this.drawWizardHat(ctx, currentX, currentY);
+        this.drawStaffAndArm(ctx, currentX, currentY);
+
+        if (this.hitFlashTimer > 0) {
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+          ctx.beginPath();
+          ctx.ellipse(currentX, currentY + this.h * 0.5, this.w * 0.8, this.h * 0.55, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      drawPedestal(ctx) {
+        const pedW = 90;
+        const pedH = 22;
+        const pedX = this.x - pedW / 2;
+        const pedY = this.baseY - 4;
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.roundRect(pedX, pedY, pedW, pedH, [8, 8, 4, 4]);
+        ctx.fill();
+        ctx.strokeStyle = this.colors.pedestalBorder;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      drawCloakBack(ctx, cx, cy) {
+        const clothSway = Math.sin(this.animTime * 0.06) * 5;
+        ctx.save();
+        ctx.fillStyle = this.colors.cloakBack;
+        ctx.beginPath();
+        ctx.moveTo(cx - 14 * this.facing, cy + 32);
+        ctx.quadraticCurveTo(cx - (24 + clothSway) * this.facing, cy + this.h * 0.7, cx - (18 + clothSway * 1.4) * this.facing, cy + this.h - 6);
+        ctx.lineTo(cx, cy + this.h - 6);
+        ctx.lineTo(cx + 8 * this.facing, cy + 36);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      drawBodyRobes(ctx, cx, cy) {
+        ctx.save();
+        ctx.fillStyle = this.colors.robePrimary;
+        ctx.beginPath();
+        ctx.moveTo(cx - 16 * this.facing, cy + 30);
+        ctx.quadraticCurveTo(cx, cy + 25, cx + 16 * this.facing, cy + 30);
+        ctx.quadraticCurveTo(cx + 22 * this.facing, cy + 68, cx + 18 * this.facing, cy + this.h - 6);
+        ctx.quadraticCurveTo(cx, cy + this.h - 3, cx - 16 * this.facing, cy + this.h - 6);
+        ctx.quadraticCurveTo(cx - 20 * this.facing, cy + 68, cx - 16 * this.facing, cy + 30);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      drawBeardAndHead(ctx, cx, cy) {
+        ctx.save();
+        ctx.fillStyle = '#060914';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 22, 11, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.moveTo(cx - 8 * this.facing, cy + 24);
+        ctx.lineTo(cx + 8 * this.facing, cy + 24);
+        ctx.quadraticCurveTo(cx + 10 * this.facing, cy + 40, cx + 3 * this.facing, cy + 58);
+        ctx.quadraticCurveTo(cx - 2 * this.facing, cy + 42, cx - 8 * this.facing, cy + 24);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = this.colors.eyeGlow;
+        ctx.fillRect(cx + this.facing * 3 - 2, cy + 20, 3, 2);
+        ctx.restore();
+      }
+
+      drawWizardHat(ctx, cx, cy) {
+        ctx.save();
+        ctx.fillStyle = this.colors.hat;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 18, 22, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, cy + 17);
+        ctx.quadraticCurveTo(cx + (this.facing * 4), cy - 12, cx - (16 * this.facing), cy - 34);
+        ctx.quadraticCurveTo(cx - (8 * this.facing), cy - 4, cx + 14, cy + 17);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      drawStaffAndArm(ctx, cx, cy) {
+        ctx.save();
+        const thrust = this.castThrustTimer > 0 ? 16 : 0;
+        const staffBaseX = cx + this.facing * (25 + thrust);
+        ctx.strokeStyle = this.colors.staffWood;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(staffBaseX, cy + this.h - 4);
+        ctx.lineTo(staffBaseX, cy + 16);
+        ctx.stroke();
+
+        ctx.fillStyle = this.colors.staffGem;
+        ctx.shadowColor = this.colors.staffGem;
+        ctx.shadowBlur = this.castThrustTimer > 0 ? 25 : 14;
+        ctx.beginPath();
+        ctx.arc(staffBaseX, cy + 12, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    /* =========================================================
+       CLASH & COLLISION ENGINE
+       ========================================================= */
+    function resolveSpellCollisions() {
+      for (let i = 0; i < activeSpells.length; i++) {
+        for (let j = i + 1; j < activeSpells.length; j++) {
+          const s1 = activeSpells[i];
+          const s2 = activeSpells[j];
+          if (s1.isDead || s2.isDead || s1.owner === s2.owner) continue;
+
+          const dist = Math.hypot(s1.x - s2.x, s1.y - s2.y);
+          if (dist <= s1.radius + s2.radius) {
+            handleElementalClash(s1, s2);
+          }
+        }
+      }
+    }
+
+    function handleElementalClash(s1, s2) {
+      const midX = (s1.x + s2.x) / 2;
+      const midY = (s1.y + s2.y) / 2;
+      const e1 = s1.element;
+      const e2 = s2.element;
+
+      if ((e1 === 'fire' && e2 === 'frost') || (e1 === 'frost' && e2 === 'fire')) {
+        s1.isDead = true; s2.isDead = true;
+        audio.playNeutralize();
+        shockwaves.push(new ImpactShockwave(midX, midY, '#38bdf8', 60));
+        spawnSteam(midX, midY, 40);
+        triggerAnnouncer('💨 THERMAL SHOCK: NEUTRALIZED INTO STEAM!', 'cyan');
+        return;
+      }
+
+      if ((e1 === 'lightning' && e2 === 'earth') || (e2 === 'lightning' && e1 === 'earth')) {
+        const lgt = e1 === 'lightning' ? s1 : s2;
+        const eth = e1 === 'earth' ? s1 : s2;
+        lgt.isDead = true;
+        eth.hp -= 15;
+        shockwaves.push(new ImpactShockwave(midX, midY, '#facc15', 55));
+        triggerAnnouncer('🪨 EARTH BOULDER GROUNDED LIGHTNING!', 'amber');
+        return;
+      }
+
+      // Default HP clash degradation
+      const s1Prev = s1.hp;
+      s1.hp -= s2.hp;
+      s2.hp -= s1Prev;
+      if (s1.hp <= 0) s1.isDead = true;
+      if (s2.hp <= 0) s2.isDead = true;
+
+      audio.playTone(320, 'triangle', 0.15, 0.2);
+      shockwaves.push(new ImpactShockwave(midX, midY, '#cbd5e1', 40));
+      triggerAnnouncer('⚔️ SPELLS CLASHED!', 'yellow');
+    }
+
+    /* =========================================================
+       UI ANNOUNCER
+       ========================================================= */
+    let announcerTimer = null;
+    function triggerAnnouncer(text, style = 'amber') {
+      const el = document.getElementById('announcer');
+      const box = document.getElementById('announcer-box');
+      const txt = document.getElementById('announcer-text');
+      txt.innerText = text;
+
+      if (style === 'cyan') {
+        box.className = 'px-5 py-2 rounded-2xl backdrop-blur-md border border-cyan-400 bg-slate-950/95 text-cyan-300 font-bold tracking-wide text-xs sm:text-sm shadow-2xl flex items-center gap-2';
+      } else if (style === 'orange') {
+        box.className = 'px-5 py-2 rounded-2xl backdrop-blur-md border border-orange-400 bg-slate-950/95 text-orange-300 font-bold tracking-wide text-xs sm:text-sm shadow-2xl flex items-center gap-2';
+      } else {
+        box.className = 'px-5 py-2 rounded-2xl backdrop-blur-md border border-amber-400 bg-slate-950/95 text-amber-300 font-bold tracking-wide text-xs sm:text-sm shadow-2xl flex items-center gap-2';
+      }
+
+      el.classList.remove('opacity-0', 'scale-90');
+      el.classList.add('opacity-100', 'scale-100');
+      if (announcerTimer) clearTimeout(announcerTimer);
+      announcerTimer = setTimeout(() => {
+        el.classList.remove('opacity-100', 'scale-100');
+        el.classList.add('opacity-0', 'scale-90');
+      }, 1500);
+    }
+
+    /* =========================================================
+       SPELL SELECTION MANAGER & LOADOUT STATE
+       ========================================================= */
+    let p1SelectedSpellIds = ['fireball', 'frost_lance', 'thunder_arc', 'earth_boulder'];
+    let p2SelectedSpellIds = ['pyro_surge', 'snow_ball', 'plasma_nova', 'meteor'];
+    let activeSelectionPlayer = 1;
+
+    function renderSelectionCatalog() {
+      const grid = document.getElementById('spell-catalog-grid');
+      grid.innerHTML = '';
+      const targetPlayer = isMultiplayer ? localPlayerId : activeSelectionPlayer;
+      const currentList = targetPlayer === 1 ? p1SelectedSpellIds : p2SelectedSpellIds;
+
+      MASTER_SPELLS.forEach(spell => {
+        const isEquipped = currentList.includes(spell.id);
+        const card = document.createElement('div');
+        card.className = `p-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition relative card-slot ${
+          isEquipped ? 'bg-amber-950/80 border-amber-500 ring-2 ring-amber-500/50' : 'bg-slate-950/80 border-slate-800 hover:border-slate-600'
+        }`;
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xl sm:text-2xl">${spell.icon}</span>
+              <span class="text-[9px] uppercase px-1.5 py-0.5 rounded font-mono font-bold ${isEquipped ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400'}">${spell.element}</span>
+            </div>
+            <div class="text-[11px] font-bold text-slate-100 truncate">${spell.name}</div>
+          </div>
+          <div class="pt-1 border-t border-slate-800/80 flex items-center justify-between text-[9px] font-mono">
+            <span class="text-amber-300 font-bold">Dmg: ${spell.damage}</span>
+            <span class="text-slate-400 font-bold">${spell.cooldown.toFixed(1)}s CD</span>
+          </div>
+        `;
+        card.onclick = () => toggleSpellEquip(spell.id);
+        grid.appendChild(card);
+      });
+      renderSelectionPreviewBars();
+    }
+
+    function toggleSpellEquip(spellId) {
+      const targetPlayer = isMultiplayer ? localPlayerId : activeSelectionPlayer;
+      const list = targetPlayer === 1 ? p1SelectedSpellIds : p2SelectedSpellIds;
+      const idx = list.indexOf(spellId);
+
+      if (idx !== -1) {
+        if (list.length > 1) list.splice(idx, 1);
+        else triggerAnnouncer('⚠️ AT LEAST 1 SPELL REQUIRED!', 'orange');
+      } else {
+        if (list.length < 4) list.push(spellId);
+        else list[3] = spellId;
+      }
+
+      if (isMultiplayer) {
+        sendNetMessage({
+          type: 'SPELL_UPDATE',
+          p1Spells: p1SelectedSpellIds,
+          p2Spells: p2SelectedSpellIds
+        });
+      }
+
+      renderSelectionCatalog();
+    }
+
+    function renderSelectionPreviewBars() {
+      ['p1', 'p2'].forEach(p => {
+        const list = p === 'p1' ? p1SelectedSpellIds : p2SelectedSpellIds;
+        const container = document.getElementById(`${p}-preview-slots`);
+        container.innerHTML = '';
+        for (let i = 0; i < 4; i++) {
+          const id = list[i];
+          const slot = document.createElement('div');
+          if (id) {
+            const sp = getSpellById(id);
+            slot.className = 'bg-slate-900 border border-slate-700 rounded-xl p-1.5 flex flex-col items-center justify-center text-center';
+            slot.innerHTML = `<span class="text-lg">${sp.icon}</span><span class="text-[10px] font-bold text-slate-200 truncate w-full">${sp.name}</span>`;
+          } else {
+            slot.className = 'bg-slate-950 border border-dashed border-slate-700 rounded-xl p-2 text-slate-600 text-[10px] flex items-center justify-center';
+            slot.innerText = 'Empty';
+          }
+          container.appendChild(slot);
+        }
+        document.getElementById(`${p}-select-count`).innerText = `${list.length} / 4 Selected`;
+      });
+    }
+
+    /* =========================================================
+       GAME CONTROLLER & IN-GAME STATE
+       ========================================================= */
+    let wizard1 = null;
+    let wizard2 = null;
+    let activeSpells = [];
+    let isGameOver = false;
+
+    function startDuelWithChosenSpells(broadcast = true) {
+      const p1Spells = p1SelectedSpellIds.map(id => JSON.parse(JSON.stringify(getSpellById(id))));
+      const p2Spells = p2SelectedSpellIds.map(id => JSON.parse(JSON.stringify(getSpellById(id))));
+      const groundY = screenHeight * 0.60;
+
+      if (!wizard1) {
+        wizard1 = new AnimatedWizard(1, screenWidth * 0.12, groundY, 'pyro', p1Spells);
+      } else {
+        wizard1.hp = wizard1.maxHp;
+        wizard1.isDead = false;
+        wizard1.setSpells(p1Spells);
+      }
+
+      if (!wizard2) {
+        wizard2 = new AnimatedWizard(2, screenWidth * 0.88, groundY, 'cryo', p2Spells);
+      } else {
+        wizard2.hp = wizard2.maxHp;
+        wizard2.isDead = false;
+        wizard2.setSpells(p2Spells);
+      }
+
+      activeSpells = [];
+      particles = [];
+      castSigils = [];
+      shockwaves = [];
+      floatingTexts = [];
+      isGameOver = false;
+
+      document.getElementById('selection-modal').classList.add('hidden');
+      document.getElementById('victory-modal').classList.add('hidden');
+
+      renderInGameCastBars();
+      updateHUD();
+
+      if (broadcast && isMultiplayer && isHost) {
+        sendNetMessage({
+          type: 'START_DUEL',
+          p1Spells: p1SelectedSpellIds,
+          p2Spells: p2SelectedSpellIds
+        });
+      }
+    }
+
+    function renderInGameCastBars() {
+      // Render P1 & P2 spell slots
+      [1, 2].forEach(pId => {
+        const wiz = pId === 1 ? wizard1 : wizard2;
+        const box = document.getElementById(`p${pId}-slots-container`);
+        box.innerHTML = '';
+        const isMine = !isMultiplayer || localPlayerId === pId;
+
+        wiz.spells.forEach((sp, idx) => {
+          const slot = document.createElement('div');
+          slot.id = `p${pId}-slot-${idx}`;
+          slot.className = `card-slot relative bg-slate-950/95 border ${isMine ? 'border-slate-800 hover:border-amber-500/60 cursor-pointer' : 'border-slate-900 opacity-80 cursor-default'} rounded-xl p-2 flex flex-col items-center justify-between text-center shadow overflow-hidden h-28`;
+          
+          if (isMine) {
+            slot.onclick = () => wiz.castSpell(idx, true);
+          }
+
+          slot.innerHTML = `
+            <div class="flex items-center justify-between w-full px-1">
+              <span class="code-font font-bold text-[11px] text-amber-300 bg-slate-900 px-1.5 py-0.5 rounded">[${idx + 1}]</span>
+              <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">${sp.element}</span>
+            </div>
+            <span class="text-2xl sm:text-3xl my-0.5">${sp.icon}</span>
+            <span class="text-[10px] font-bold text-slate-200 truncate w-full">${sp.name}</span>
+            <div class="flex items-center justify-between w-full px-1 pt-0.5 border-t border-slate-800/80">
+              <span class="text-[9px] text-amber-300 font-mono">Dmg:${sp.damage}</span>
+              <span class="text-[9px] text-slate-400 font-mono">${sp.cooldown.toFixed(1)}s</span>
+            </div>
+            <div id="p${pId}-cd-${idx}" class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center hidden">
+              <span id="p${pId}-cd-txt-${idx}" class="text-sm code-font font-bold text-amber-300">0.0s</span>
+            </div>
+          `;
+          box.appendChild(slot);
+        });
+      });
+    }
+
+    function updateHUD() {
+      if (!wizard1 || !wizard2) return;
+      document.getElementById('p1-hp-text').innerText = `${Math.ceil(wizard1.hp)} / ${wizard1.maxHp} HP`;
+      document.getElementById('p1-hp-bar').style.width = `${(wizard1.hp / wizard1.maxHp) * 100}%`;
+      document.getElementById('p2-hp-text').innerText = `${Math.ceil(wizard2.hp)} / ${wizard2.maxHp} HP`;
+      document.getElementById('p2-hp-bar').style.width = `${(wizard2.hp / wizard2.maxHp) * 100}%`;
+
+      [1, 2].forEach(pId => {
+        const wiz = pId === 1 ? wizard1 : wizard2;
+        wiz.cooldowns.forEach((cd, idx) => {
+          const overlay = document.getElementById(`p${pId}-cd-${idx}`);
+          const txt = document.getElementById(`p${pId}-cd-txt-${idx}`);
+          if (overlay && txt) {
+            if (cd > 0) {
+              overlay.classList.remove('hidden');
+              txt.innerText = cd.toFixed(1) + 's';
+            } else {
+              overlay.classList.add('hidden');
+            }
+          }
+        });
+      });
+    }
+
+    function endDuel(winnerId) {
+      isGameOver = true;
+      audio.playVictory();
+      const modal = document.getElementById('victory-modal');
+      const title = document.getElementById('victory-title');
+      const trophy = document.getElementById('victory-trophy');
+
+      if (isMultiplayer) {
+        if (winnerId === localPlayerId) {
+          title.innerText = 'VICTORY PREVAILS!';
+          title.className = 'title-font text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-300 mb-3';
+          trophy.innerText = '👑';
+        } else {
+          title.innerText = 'DEFEATED IN DUEL';
+          title.className = 'title-font text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-red-400 mb-3';
+          trophy.innerText = '💀';
+        }
+      } else {
+        title.innerText = winnerId === 1 ? 'PLAYER 1 PREVAILS!' : 'PLAYER 2 PREVAILS!';
+        trophy.innerText = winnerId === 1 ? '🔥' : '❄️';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    /* =========================================================
+       INPUT SYSTEM (KEYS 1, 2, 3, 4)
+       ========================================================= */
+    window.addEventListener('keydown', (e) => {
+      audio.init();
+      if (!document.getElementById('selection-modal').classList.contains('hidden')) return;
+
+      if (e.code === 'Space' && isGameOver) {
+        if (isMultiplayer) {
+          if (isHost) startDuelWithChosenSpells(true);
+          else sendNetMessage({ type: 'RESTART_REQUEST' });
+        } else {
+          startDuelWithChosenSpells(false);
+        }
+        return;
+      }
+
+      // Keys 1, 2, 3, 4 activate active player's slot
+      let slotIdx = -1;
+      if (e.code === 'Digit1' || e.key === '1') slotIdx = 0;
+      if (e.code === 'Digit2' || e.key === '2') slotIdx = 1;
+      if (e.code === 'Digit3' || e.key === '3') slotIdx = 2;
+      if (e.code === 'Digit4' || e.key === '4') slotIdx = 3;
+
+      if (slotIdx !== -1) {
+        if (isMultiplayer) {
+          const myWiz = localPlayerId === 1 ? wizard1 : wizard2;
+          myWiz.castSpell(slotIdx, true);
+        } else {
+          wizard1.castSpell(slotIdx, false);
+        }
+      }
+
+      // Offline P2 secondary hotkeys: 5,6,7,8
+      if (!isMultiplayer) {
+        if (e.code === 'Digit5' || e.key === '5') wizard2.castSpell(0, false);
+        if (e.code === 'Digit6' || e.key === '6') wizard2.castSpell(1, false);
+        if (e.code === 'Digit7' || e.key === '7') wizard2.castSpell(2, false);
+        if (e.code === 'Digit8' || e.key === '8') wizard2.castSpell(3, false);
+      }
+    });
+
+    /* =========================================================
+       LOBBY & BUTTON LISTENERS
+       ========================================================= */
+    document.getElementById('btn-host-game').addEventListener('click', initHost);
+    document.getElementById('btn-join-game').addEventListener('click', () => {
+      const code = document.getElementById('input-room-code').value;
+      initGuest(code);
+    });
+
+    document.getElementById('btn-copy-code').addEventListener('click', () => {
+      navigator.clipboard.writeText(currentRoomCode);
+      triggerAnnouncer('📋 CODE COPIED TO CLIPBOARD', 'amber');
+    });
+
+    document.getElementById('btn-copy-link').addEventListener('click', () => {
+      const url = `${window.location.origin}${window.location.pathname}?duel=${currentRoomCode}`;
+      navigator.clipboard.writeText(url);
+      triggerAnnouncer('🔗 DUEL LINK COPIED', 'cyan');
+    });
+
+    document.getElementById('btn-local-play').addEventListener('click', () => {
+      document.getElementById('lobby-modal').classList.add('hidden');
+      isMultiplayer = false;
+      startDuelWithChosenSpells(false);
+    });
+
+    document.getElementById('btn-open-selection').addEventListener('click', () => {
+      renderSelectionCatalog();
+      document.getElementById('selection-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('btn-cancel-select').addEventListener('click', () => {
+      document.getElementById('selection-modal').classList.add('hidden');
+    });
+
+    document.getElementById('btn-start-duel').addEventListener('click', () => {
+      startDuelWithChosenSpells(true);
+    });
+
+    document.getElementById('btn-rematch').addEventListener('click', () => {
+      if (isMultiplayer) {
+        if (isHost) startDuelWithChosenSpells(true);
+        else sendNetMessage({ type: 'RESTART_REQUEST' });
+      } else {
+        startDuelWithChosenSpells(false);
+      }
+    });
+
+    document.getElementById('btn-change-spells-victory').addEventListener('click', () => {
+      document.getElementById('victory-modal').classList.add('hidden');
+      renderSelectionCatalog();
+      document.getElementById('selection-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('btn-sound').addEventListener('click', (e) => {
+      audio.enabled = !audio.enabled;
+      e.target.innerText = audio.enabled ? '🔊 Sound: ON' : '🔇 Sound: OFF';
+    });
+
+    document.getElementById('btn-matrix').addEventListener('click', () => {
+      document.getElementById('matrix-modal').classList.remove('hidden');
+    });
+    document.getElementById('btn-close-matrix').addEventListener('click', () => {
+      document.getElementById('matrix-modal').classList.add('hidden');
+    });
+    document.getElementById('btn-matrix-ok').addEventListener('click', () => {
+      document.getElementById('matrix-modal').classList.add('hidden');
+    });
+
+    /* =========================================================
+       MAIN 60FPS RENDER & SIMULATION LOOP
+       ========================================================= */
+    let syncTick = 0;
+
+    function gameLoop() {
+      // Host broadcasts tick state sync at 30Hz
+      if (isMultiplayer && isHost && netConn && netConn.open) {
+        syncTick++;
+        if (syncTick % 2 === 0) {
+          sendNetMessage({
+            type: 'STATE_SYNC',
+            p1Hp: wizard1 ? wizard1.hp : 350,
+            p2Hp: wizard2 ? wizard2.hp : 350,
+            spells: activeSpells.map(s => ({
+              id: s.netId,
+              configId: s.id,
+              owner: s.owner,
+              x: s.x / screenWidth,
+              y: s.y / screenHeight,
+              speed: s.speed,
+              hp: s.hp,
+              dir: s.dir
+            }))
+          });
+        }
+      }
+
+      // Background
+      const bg = ctx.createLinearGradient(0, 0, 0, screenHeight);
+      bg.addColorStop(0, '#02040b');
+      bg.addColorStop(0.5, '#080d22');
+      bg.addColorStop(1, '#0c0b1e');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, screenWidth, screenHeight);
+
+      // Arena Floor Plane
+      const groundY = screenHeight * 0.60;
+      ctx.fillStyle = '#070a12';
+      ctx.fillRect(0, groundY + 12, screenWidth, screenHeight - (groundY + 12));
+
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY + 12);
+      ctx.lineTo(screenWidth, groundY + 12);
+      ctx.stroke();
+
+      if (wizard1) wizard1.update();
+      if (wizard2) wizard2.update();
+
+      for (let i = castSigils.length - 1; i >= 0; i--) {
+        castSigils[i].update();
+        if (castSigils[i].life <= 0) castSigils.splice(i, 1);
+      }
+
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        shockwaves[i].update();
+        if (shockwaves[i].life <= 0) shockwaves.splice(i, 1);
+      }
+
+      for (let i = activeSpells.length - 1; i >= 0; i--) {
+        const sp = activeSpells[i];
+        sp.update();
+
+        // Target hit detection (Host authoritative or offline)
+        if (!isMultiplayer || isHost) {
+          const targetWizard = sp.owner === 1 ? wizard2 : wizard1;
+          const hitTarget = (
+            sp.x >= targetWizard.x - targetWizard.w / 2 &&
+            sp.x <= targetWizard.x + targetWizard.w / 2 &&
+            sp.y >= targetWizard.baseY - targetWizard.h &&
+            sp.y <= targetWizard.baseY
+          );
+
+          if (hitTarget && !sp.isDead) {
+            sp.isDead = true;
+            targetWizard.takeDamage(sp.damage);
+            shockwaves.push(new ImpactShockwave(sp.x, sp.y, sp.color, 45, sp.element));
+            spawnSparks(sp.x, sp.y, sp.color, 16, 4);
+          }
+        }
+
+        if (sp.isDead) {
+          activeSpells.splice(i, 1);
+        }
+      }
+
+      if (!isMultiplayer || isHost) {
+        resolveSpellCollisions();
+      }
+
+      if (wizard1) wizard1.draw(ctx);
+      if (wizard2) wizard2.draw(ctx);
+
+      castSigils.forEach(sigil => sigil.draw(ctx));
+      activeSpells.forEach(sp => sp.draw(ctx));
+      shockwaves.forEach(sw => sw.draw(ctx));
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw(ctx);
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+
+      for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        floatingTexts[i].update();
+        floatingTexts[i].draw(ctx);
+        if (floatingTexts[i].life <= 0) floatingTexts.splice(i, 1);
+      }
+
+      updateHUD();
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* =========================================================
+       INITIALIZATION & URL QUERY AUTO-JOIN
+       ========================================================= */
+    window.onload = function() {
+      resizeCanvas();
+      startDuelWithChosenSpells(false);
+
+      // Check URL parameters for direct join: ?duel=XXXXXX
+      const params = new URLSearchParams(window.location.search);
+      const duelCode = params.get('duel');
+      if (duelCode) {
+        document.getElementById('input-room-code').value = duelCode.toUpperCase();
+        initGuest(duelCode);
+      }
+
+      gameLoop();
+    };
+  </script>
+</body>
+</html>
