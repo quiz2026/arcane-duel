@@ -490,7 +490,7 @@
     let netConn = null;
     let isMultiplayer = false;
     let isHost = false;
-    let localPlayerId = 1; // 1 = Left Wizard (P1), 2 = Right Wizard (P2)
+    let localPlayerId = 1;
     let currentRoomCode = '';
 
     function generateRoomCode(len = 6) {
@@ -530,7 +530,6 @@
       peer.on('error', (err) => {
         console.error('Peer error:', err);
         if (err.type === 'unavailable-id') {
-          // Collision retry
           peer.destroy();
           initHost();
         } else {
@@ -626,7 +625,6 @@
           break;
 
         case 'CAST_SPELL':
-          // Remote peer cast spell
           if (data.playerId === 1 && wizard1) {
             wizard1.castSpell(data.slotIndex, false);
           } else if (data.playerId === 2 && wizard2) {
@@ -635,7 +633,6 @@
           break;
 
         case 'SPELL_UPDATE':
-          // Loadout changed
           p1SelectedSpellIds = data.p1Spells;
           p2SelectedSpellIds = data.p2Spells;
           renderSelectionPreviewBars();
@@ -653,8 +650,12 @@
           }
           break;
 
+        case 'MATCH_OVER':
+          endDuel(data.winnerId, false);
+          break;
+
         case 'RESTART_REQUEST':
-          startDuelWithChosenSpells(false);
+          startDuelWithChosenSpells(true);
           break;
       }
     }
@@ -678,18 +679,28 @@
           p2Loadout.innerText = 'YOUR SPELL LOADOUT (KEYS 1-4)';
         }
 
-        // Hide opponent editing tab in spell selection
         document.getElementById('selection-tab-container').classList.add('hidden');
         document.getElementById('selection-subtitle').innerText = `Select your 4 spells (${localPlayerId === 1 ? 'Player 1' : 'Player 2'}).`;
       }
     }
 
     function applyHostStateSync(state) {
+      if (isGameOver) return;
+
       if (wizard1 && wizard2) {
         wizard1.hp = state.p1Hp;
         wizard2.hp = state.p2Hp;
 
-        // Projectile syncing for visual consistency
+        if (wizard1.hp <= 0 && !wizard1.isDead) {
+          wizard1.isDead = true;
+          endDuel(2, false);
+          return;
+        } else if (wizard2.hp <= 0 && !wizard2.isDead) {
+          wizard2.isDead = true;
+          endDuel(1, false);
+          return;
+        }
+
         state.spells.forEach(srvSp => {
           let local = activeSpells.find(s => s.netId === srvSp.id);
           if (local) {
@@ -698,7 +709,6 @@
             local.speed = srvSp.speed;
             local.hp = srvSp.hp;
           } else {
-            // New spell spawned by host
             const conf = getSpellById(srvSp.configId);
             const spawned = new ActiveSpell(srvSp.owner, conf, srvSp.x * screenWidth, srvSp.y * screenHeight, srvSp.dir);
             spawned.netId = srvSp.id;
@@ -706,7 +716,6 @@
           }
         });
 
-        // Remove dead spells
         const aliveNetIds = new Set(state.spells.map(s => s.id));
         for (let i = activeSpells.length - 1; i >= 0; i--) {
           if (activeSpells[i].netId && !aliveNetIds.has(activeSpells[i].netId)) {
@@ -1088,7 +1097,6 @@
           ctx.fill(); ctx.stroke();
           ctx.restore();
         } else {
-          // Standard arcane/elemental circle
           ctx.fillStyle = this.color;
           ctx.beginPath();
           ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -1189,7 +1197,7 @@
           this.isDead = true;
           this.hp = 0;
           this.defeatTimer = 1;
-          endDuel(this.id === 1 ? 2 : 1);
+          endDuel(this.id === 1 ? 2 : 1, true);
         }
       }
 
@@ -1221,7 +1229,6 @@
           ctx.translate(-currentX, -this.baseY);
         }
 
-        // Draw wizard silhouette & components
         this.drawCloakBack(ctx, currentX, currentY);
         this.drawBodyRobes(ctx, currentX, currentY);
         this.drawBeardAndHead(ctx, currentX, currentY);
@@ -1378,7 +1385,6 @@
         return;
       }
 
-      // Default HP clash degradation
       const s1Prev = s1.hp;
       s1.hp -= s2.hp;
       s2.hp -= s1Prev;
@@ -1519,6 +1525,7 @@
       } else {
         wizard1.hp = wizard1.maxHp;
         wizard1.isDead = false;
+        wizard1.defeatTimer = 0;
         wizard1.setSpells(p1Spells);
       }
 
@@ -1527,6 +1534,7 @@
       } else {
         wizard2.hp = wizard2.maxHp;
         wizard2.isDead = false;
+        wizard2.defeatTimer = 0;
         wizard2.setSpells(p2Spells);
       }
 
@@ -1543,9 +1551,9 @@
       renderInGameCastBars();
       updateHUD();
 
-      if (broadcast && isMultiplayer && isHost) {
+      if (broadcast && isMultiplayer) {
         sendNetMessage({
-          type: 'START_DUEL',
+          type: isHost ? 'START_DUEL' : 'RESTART_REQUEST',
           p1Spells: p1SelectedSpellIds,
           p2Spells: p2SelectedSpellIds
         });
@@ -1553,7 +1561,6 @@
     }
 
     function renderInGameCastBars() {
-      // Render P1 & P2 spell slots
       [1, 2].forEach(pId => {
         const wiz = pId === 1 ? wizard1 : wizard2;
         const box = document.getElementById(`p${pId}-slots-container`);
@@ -1613,9 +1620,18 @@
       });
     }
 
-    function endDuel(winnerId) {
+    function endDuel(winnerId, broadcast = true) {
+      if (isGameOver) return;
       isGameOver = true;
       audio.playVictory();
+
+      if (broadcast && isMultiplayer && isHost) {
+        sendNetMessage({
+          type: 'MATCH_OVER',
+          winnerId: winnerId
+        });
+      }
+
       const modal = document.getElementById('victory-modal');
       const title = document.getElementById('victory-title');
       const trophy = document.getElementById('victory-trophy');
@@ -1655,7 +1671,6 @@
         return;
       }
 
-      // Keys 1, 2, 3, 4 activate active player's slot
       let slotIdx = -1;
       if (e.code === 'Digit1' || e.key === '1') slotIdx = 0;
       if (e.code === 'Digit2' || e.key === '2') slotIdx = 1;
@@ -1671,7 +1686,6 @@
         }
       }
 
-      // Offline P2 secondary hotkeys: 5,6,7,8
       if (!isMultiplayer) {
         if (e.code === 'Digit5' || e.key === '5') wizard2.castSpell(0, false);
         if (e.code === 'Digit6' || e.key === '6') wizard2.castSpell(1, false);
@@ -1755,8 +1769,7 @@
     let syncTick = 0;
 
     function gameLoop() {
-      // Host broadcasts tick state sync at 30Hz
-      if (isMultiplayer && isHost && netConn && netConn.open) {
+      if (isMultiplayer && isHost && netConn && netConn.open && !isGameOver) {
         syncTick++;
         if (syncTick % 2 === 0) {
           sendNetMessage({
@@ -1777,7 +1790,6 @@
         }
       }
 
-      // Background
       const bg = ctx.createLinearGradient(0, 0, 0, screenHeight);
       bg.addColorStop(0, '#02040b');
       bg.addColorStop(0.5, '#080d22');
@@ -1785,7 +1797,6 @@
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, screenWidth, screenHeight);
 
-      // Arena Floor Plane
       const groundY = screenHeight * 0.60;
       ctx.fillStyle = '#070a12';
       ctx.fillRect(0, groundY + 12, screenWidth, screenHeight - (groundY + 12));
@@ -1814,7 +1825,6 @@
         const sp = activeSpells[i];
         sp.update();
 
-        // Target hit detection (Host authoritative or offline)
         if (!isMultiplayer || isHost) {
           const targetWizard = sp.owner === 1 ? wizard2 : wizard1;
           const hitTarget = (
@@ -1871,7 +1881,6 @@
       resizeCanvas();
       startDuelWithChosenSpells(false);
 
-      // Check URL parameters for direct join: ?duel=XXXXXX
       const params = new URLSearchParams(window.location.search);
       const duelCode = params.get('duel');
       if (duelCode) {
